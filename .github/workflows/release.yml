@@ -1,0 +1,89 @@
+name: Release auto-target-txt
+
+on:
+  workflow_dispatch:
+
+env:
+  BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+
+jobs:
+  pack:
+    name: Pack module
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    strategy:
+      fail-fast: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set Timezone
+        uses: szenius/set-timezone@v2.0
+        with:
+          timezoneLinux: "Asia/Jakarta"
+          timezoneMacos: "Asia/Jakarta"
+          timezoneWindows: "SE Asia Standard Time"
+
+      - name: Initialize
+        run: |
+          VERSION_CODE="$(date '+%y%m%d')" && echo "version-code=$VERSION_CODE">> $GITHUB_OUTPUT
+          VERSION="R$VERSION_CODE" && echo "version=$VERSION">> $GITHUB_OUTPUT
+          ZIPNAME="auto-target-txt_$VERSION.zip" && echo "zipname=$ZIPNAME">> $GITHUB_OUTPUT
+          echo "module-folder=$(pwd)/module">> $GITHUB_OUTPUT
+        id: initialize
+
+      - name: Pack module
+        run: |
+          sed -i "s/__VERSION__/$VERSION/g" module.prop
+          sed -i "s/__VERSION_CODE__/$VERSION_CODE/g" module.prop
+          echo "updateJson=https://raw.githubusercontent.com/$GITHUB_REPOSITORY/refs/heads/$BRANCH_NAME/update.json" >> module.prop
+          zip -0rq "../$ZIPNAME" * -x '*.git*' README.md LICENSE *placeholder
+        working-directory: ${{ steps.initialize.outputs.module-folder }}
+        env:
+          VERSION: ${{ steps.initialize.outputs.version }}
+          VERSION_CODE: ${{ steps.initialize.outputs.version-code }}
+          ZIPNAME: ${{ steps.initialize.outputs.zipname }}
+
+      - name: Prepare release package
+        run: |
+          mkdir -p ./release
+          mv -f `find ./ -iname *.zip` ./release/
+
+      - name: Upload release
+        uses: Hs1r1us/Release-AIO@v2.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.initialize.outputs.version-code }}
+          prerelease: false
+          release_name: ${{ steps.initialize.outputs.version }}
+          body_path: "./CHANGELOG.md"
+          asset_files: './release'
+
+      - name: Create update.json
+        run: |
+          get_update_json() {
+            echo "{
+            \"version\": \"$VERSION\",
+            \"versionCode\": $VERSION_CODE,
+            \"zipUrl\": \"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$VERSION_CODE/$ZIPNAME\",
+            \"changelog\": \"https://raw.githubusercontent.com/$GITHUB_REPOSITORY/refs/heads/$BRANCH_NAME/CHANGELOG.md\"
+          }"
+          }
+
+          get_update_json > update.json
+        env:
+          VERSION: ${{ steps.initialize.outputs.version }}
+          VERSION_CODE: ${{ steps.initialize.outputs.version-code }}
+          ZIPNAME: ${{ steps.initialize.outputs.zipname }}
+
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          branch: ${{ github.head_ref || github.ref_name }}
+          skip_checkout: true
+          file_pattern: update.json
+          commit_message: ${{ steps.initialize.outputs.version }}

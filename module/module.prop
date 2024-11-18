@@ -1,6 +1,6 @@
 id=auto-target-txt
 name=Auto target.txt
-version=R241118
-versionCode=241118
+version=__VERSION__
+versionCode=__VERSION_CODE__
 author=bavvtm
 description=Tricky Store Support for make target.txt file auto
